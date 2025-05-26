@@ -80,3 +80,23 @@ variable "common_tags" {
   description = "Tags comuns para todos os recursos."
   type        = map(string)
 }
+
+variable "resource_name" {
+  description = "O nome do recurso. Deve terminar com um sufixo fixo (ex: '-prod' para produção)."
+  type        = string
+
+  validation {
+    # Define o padrão que o nome do recurso deve seguir.
+    # Exemplo: O nome deve terminar com '-prod'.
+    condition     = can(regex(".*-prod$", var.resource_name))
+    error_message = "O nome do recurso deve terminar com '-prod' (ex: 'my-app-prod')."
+  }
+}
+
+# Exemplo de uso da variável em um local para demonstrar a validação
+locals {
+  # Este local apenas ilustra que a variável validada seria usada.
+  # Em um cenário real, 'var.resource_name' seria usado no bloco de recurso.
+  final_resource_name = var.resource_name
+}
+
