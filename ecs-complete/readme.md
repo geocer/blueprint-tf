@@ -211,3 +211,29 @@ source = "terraform-aws-modules/ecs/aws" e source = "terraform-aws-modules/alb/a
 
 
 5. Toda a logica para criacao dos recursos e parse do arquivo de input json seja colocada no arquivo locals.tf para os modulos ficarem limpos e com uma facil visualizacao
+
+
+Para macOS: brew install buildpacks/pack/pack
+Para Linux: curl -sSL https://github.com/buildpacks/pack/releases/download/v0.32.0/pack-v0.32.0-linux.tgz | sudo tar -C /usr/local/bin -xz pack
+
+export AWS_REGION="us-east-1" # Sua região AWS
+export REPOSITORY_NAME="sample-repo" # Nome do seu repositório ECR
+export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text) # Pega seu ID da conta AWS
+export ECR_REPO_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPOSITORY_NAME}"
+export IMAGE_TAG="latest" # Tag da sua imagem
+export APP_SOURCE_PATH="." # Onde está o código-fonte do seu aplicativo ('.' para o diretório atual)
+
+aws ecr create-repository \
+  --repository-name "${REPOSITORY_NAME}" \
+  --image-tag-mutability IMMUTABLE \
+  --image-scanning-configuration scanOnPush=true \
+  --region "${AWS_REGION}"
+
+aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+
+pack build "${ECR_REPO_URI}:${IMAGE_TAG}" \
+  --path "${APP_SOURCE_PATH}" \
+  --builder "paketobuildpacks/builder-jammy-base:latest" \
+  --publish \
+  --pull-policy if-not-present
