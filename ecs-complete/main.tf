@@ -6,6 +6,7 @@ provider "aws" {
 module "ecs_main" {
   source  = "terraform-aws-modules/ecs/aws"
   version = "5.12.1"
+  
 
   cluster_name          = local.ecs_cluster_config.cluster_name
   cluster_configuration = local.ecs_cluster_config.cluster_configuration
@@ -27,19 +28,28 @@ module "ecs_main" {
       deployment_minimum_healthy_percent = service_attrs.deployment_minimum_healthy_percent
       deployment_maximum_percent = service_attrs.deployment_maximum_percent
 
-      task_exec_role_additional_iam_policy_arns = service_attrs.task_exec_role_additional_iam_policy_arns
-
       tags                       = service_attrs.tags
-    }
+      
+      tasks_iam_role_name               = service_attrs.tasks_iam_role_name
+      tasks_iam_role_description        = service_attrs.tasks_iam_role_description
+      tasks_iam_role_policies           = service_attrs.tasks_iam_role_policies
+      tasks_iam_role_statements         = service_attrs.tasks_iam_role_statements
+      service_connect_configuration     = service_attrs.service_connect_configuration
+    } 
   }
 
   depends_on = [
-    aws_lb_listener.dynamic_listener # Depende do novo recurso de listener dinâmico
+    aws_lb_listener.dynamic_listener, # Depende do novo recurso de listener dinâmico
+    aws_service_discovery_http_namespace.this
   ]
 
   tags = local.ecs_cluster_config.tags
 }
 
+resource "aws_service_discovery_http_namespace" "this" {
+  name        = "${local.project_name}-app-namespace"
+  description = "HTTP namespace for application services"
+}
 
 # Para cada serviço, cria apenas o ALB (sem listeners)
 module "alb" {
@@ -137,4 +147,28 @@ resource "aws_lb_listener" "dynamic_listener" {
   }
 
   tags = each.value.listener_config.tags
+}
+
+module "secrets_manager_docker_credentials" {
+  source      = "terraform-aws-modules/secrets-manager/aws" # Confirme o source do seu módulo!
+
+  name        = "docker/fmh-nexus-onefiserv-net"
+  description = "Credenciais para o Docker Registry fmh.nexus.onefiserv.net"
+
+  secret_string = jsonencode({
+    username = "svc-bra-fts-eng-clou",
+    password = var.docker_nexus_password
+  })
+
+  create_policy       = false
+  block_public_policy = true
+
+  recovery_window_in_days = 7
+  create_random_password  = false
+
+  tags = {
+    Environment = "Development"
+    Project     = "DockerIntegration"
+    ManagedBy   = "Terraform"
+  }
 }

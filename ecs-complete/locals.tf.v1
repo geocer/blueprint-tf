@@ -47,7 +47,7 @@ locals {
     # Logs de acesso do ALB
     access_logs = {
       bucket = local.alb_access_logs_bucket
-      enabled = true # Alterado para true para habilitar logs
+      enabled = false
     }
 
     tags = {
@@ -185,7 +185,8 @@ locals {
           {} 
         )
 
-        # Removed 'service_connect_client_alias' from here, it's now part of service_connect_configuration.service.client_alias
+        service_connect_client_alias = lookup(container_def, "service_connect_client_alias", null)
+      
       }
     }
 
@@ -250,21 +251,22 @@ locals {
 
     tasks_iam_role_name        = "${local.project_name}-${service_name}-task-role"
     tasks_iam_role_description = "IAM Task Role for ${local.project_name}-${service_name} ECS service"
-    
-    service_connect_configuration = service_attrs.enable_service_connect ? (
-      {
-        namespace = local.service_discovery_namespace_arn
-        service   = {
-          port_name      = tostring(values(service_attrs.container_definitions)[0].container_port)
-          discovery_name = keys(service_attrs.container_definitions)[0]
-          client_alias = {
-            port     = values(service_attrs.container_definitions)[0].container_port
-            dns_name = keys(service_attrs.container_definitions)[0]
-          }
+
+    service_connect_configuration = service_attrs.enable_service_connect ? {
+      namespace = local.service_discovery_namespace_arn
+      service = {
+        for container_name, container_def in service_attrs.container_definitions : container_name => {
+          client_alias = [
+            {
+              port      = container_def.container_port
+              dns_name  = lookup(container_def, "service_connect_client_alias", container_name)
+            }
+          ]
+          port_name       = container_def.container_port
+          discovery_name  = container_name
         }
       }
-    ) : null  
-
+    } : null
   }}
 
   # Configuração do cluster ECS
@@ -289,16 +291,5 @@ locals {
       Environment = "Development"
       Project     = local.project_name
     }
-  }
-}
-
-
-# outputs.tf
-
-output "debug_service_connect_configurations" {
-  description = "Debug output for service_connect_configuration of each ECS service."
-  value       = {
-    for service_name, service_config in local.ecs_service_configs :
-    service_name => service_config.service_connect_configuration
   }
 }

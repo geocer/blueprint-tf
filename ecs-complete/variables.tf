@@ -58,10 +58,14 @@ variable "ecs_services" {
       firelens_configuration = optional(object({
         type = string
       }))
+      repositoryCredentials  = optional(object({
+        credentialsParameter = string
+      }))
       log_configuration   = optional(object({
         logDriver = string
         options   = map(string)
       }))
+      service_connect_client_alias = optional(string)
     }))
     health_check_path   = string
     health_check_port   = string
@@ -72,5 +76,19 @@ variable "ecs_services" {
     alb_protocol        = string
     alb_host_header     = optional(string)
     additional_task_role_policy_arns = optional(list(string), [])
+    enable_service_connect    = optional(bool, false)
   }))
+}
+
+variable "service_discovery_namespace_name" {
+  description = "The name of the AWS Service Discovery HTTP Namespace for Service Connect."
+  type        = string
+  default     = "app-namespace"
+}
+
+variable "docker_nexus_password" {
+  description = "Access to Nexus Docker Repository"
+  type        = string
+  sensitive   = true
+  default     = "NEXUS_PASSWD"
 }
