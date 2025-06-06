@@ -1,0 +1,3 @@
+locals {
+  parameters = var.parameters
+}
