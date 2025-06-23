@@ -44,39 +44,49 @@ variable "ecs_log_group_name" {
 }
 
 variable "ecs_services" {
-  description = "Map of ECS Fargate service definitions."
+  description = "A map of ECS service configurations."
   type = map(object({
-    cpu                 = number
-    memory              = number
+    cpu = number
+    memory = number
     container_definitions = map(object({
-      image               = string
-      container_port      = optional(number)
-      essential           = optional(bool, true)
-      cpu                 = optional(number)
-      memory              = optional(number)
-      environment         = optional(map(string), {})
+      image = string
+      repositoryCredentials = optional(object({
+        credentialsParameter = string
+      }))
+      container_port = optional(number)
+      project_name   = optional(string) 
+      essential = optional(bool, true)
+      cpu = optional(number)
+      memory = optional(number)
+      environment = optional(map(string), {})
       firelens_configuration = optional(object({
         type = string
-      }))
-      repositoryCredentials  = optional(object({
-        credentialsParameter = string
       }))
       log_configuration   = optional(object({
         logDriver = string
         options   = map(string)
       }))
       service_connect_client_alias = optional(string)
+      secrets = optional(map(object({
+        value_from = string
+      })), {})
+      mount_points = optional(object({
+        source_volume_name = optional(string) # Nome do volume definido no nível do serviço
+        container_path     = optional(string) # Caminho dentro do container (ex: "/mnt/data")
+        read_only          = optional(bool)
+      }), null)
     }))
-    health_check_path   = string
-    health_check_port   = string
-    desired_count       = number
+    health_check_path = optional(string)
+    health_check_port = optional(string)
+    desired_count = number
     min_healthy_percent = number
-    max_percent         = number
-    alb_listener_port   = number
-    alb_protocol        = string
-    alb_host_header     = optional(string)
+    max_percent = number
+    alb_listener_port = optional(number)
+    alb_protocol = optional(string)
+    alb_host_header = optional(string)
     additional_task_role_policy_arns = optional(list(string), [])
-    enable_service_connect    = optional(bool, false)
+    enable_service_connect = optional(bool, false)
+    create_alb = optional(bool, false)
   }))
 }
 

@@ -15,7 +15,14 @@ locals {
     for k, v in var.ecs_services : k => v
   }
 
-  alb_core_configs = { for service_name, service_attrs in local.ecs_services_input : service_name => {
+  # <<<<<<<<<< NOVO LOCAL ADICIONADO AQUI
+  ecs_services_with_alb = {
+    for service_name, service_attrs in local.ecs_services_input : service_name => service_attrs
+    if lookup(service_attrs, "create_alb", false) # Filtra serviços que devem ter ALB
+  }
+
+  alb_core_configs = { 
+    for service_name, service_attrs in local.ecs_services_with_alb : service_name => { # <<<< USANDO NOVO LOCAL
     name = "${local.project_name}-${service_name}-alb"
     vpc_id = local.vpc_id
     subnets = local.public_subnet_ids # ALBs geralmente ficam em subnets públicas
@@ -58,7 +65,8 @@ locals {
   }}
 
   # Mapeamento para criar Target Groups de forma independente
-  target_group_configs = { for service_name, service_attrs in local.ecs_services_input : service_name => {
+  target_group_configs = { 
+    for service_name, service_attrs in local.ecs_services_with_alb : service_name => { # <<<< USANDO NOVO LOCAL
     name                 = "${local.project_name}-${service_name}-tg"
     name_prefix          = substr(service_name, 0, 6)
     protocol             = "HTTP"
@@ -88,7 +96,7 @@ locals {
   # MAPEAMENTO PARA LISTENERS: AGORA COM fixed-response E forward
   # ====================================================================
   alb_dynamic_listener_configs = {
-    for service_name, service_attrs in local.ecs_services_input : service_name => {
+    for service_name, service_attrs in local.ecs_services_with_alb : service_name => { # <<<< USANDO NOVO LOCAL
       # Listener HTTP (porta 80) com fixed-response
       "http-fixed-response" = { # Chave simplificada para este listener
         port              = 80
@@ -112,10 +120,11 @@ locals {
       },
       # Listener principal (HTTPS ou HTTP) com forward para o Target Group
       "main-app-forward" = { # Chave simplificada para este listener
-        port              = service_attrs.alb_listener_port
-        protocol          = upper(service_attrs.alb_protocol)
-        certificate_arn   = service_attrs.alb_protocol == "HTTPS" ? local.alb_certificate_arn : null
-        ssl_policy        = service_attrs.alb_protocol == "HTTPS" ? "ELBSecurityPolicy-TLS13-1-2-Res-2021-06" : null
+        # Adicionar verificação para `alb_listener_port` e `alb_protocol`
+        port              = lookup(service_attrs, "alb_listener_port", 443) # Usar lookup com default
+        protocol          = upper(lookup(service_attrs, "alb_protocol", "HTTPS")) # Usar lookup com default
+        certificate_arn   = lookup(service_attrs, "alb_protocol", "HTTPS") == "HTTPS" ? local.alb_certificate_arn : null
+        ssl_policy        = lookup(service_attrs, "alb_protocol", "HTTPS") == "HTTPS" ? "ELBSecurityPolicy-TLS13-1-2-Res-2021-06" : null
         default_action_type = "forward"
         fixed_response = null
         redirect = null
@@ -149,8 +158,8 @@ locals {
     desired_count = service_attrs.desired_count
     launch_type = "FARGATE"
 
-    # Extrai o Security Group ID do ALB correspondente para a regra de ingresso
-    load_balancer_sg_id = module.alb[service_name].security_group_id
+    # Condicionar 'load_balancer_sg_id'
+    load_balancer_sg_id = lookup(service_attrs, "create_alb", false) ? module.alb[service_name].security_group_id : null
 
     # Configurações do Fargate
     fargate_platform_version = "LATEST"
@@ -189,37 +198,41 @@ locals {
       }
     }
 
-    # Configuração do Load Balancer para o serviço ECS
-    load_balancer = {
+    # Configuração do Load Balancer para o serviço ECS (condicional)
+    load_balancer = lookup(service_attrs, "create_alb", false) ? {
       service = {
         # Agora referencia o Target Group que será criado manualmente
         target_group_arn = aws_lb_target_group.this[service_name].arn
         container_name   = keys(service_attrs.container_definitions)[0] # Pega o nome do primeiro container
         container_port   = service_attrs.container_definitions[keys(service_attrs.container_definitions)[0]].container_port
       }
-    }
+    } : null
 
     # Subnets privadas para o serviço ECS
     subnet_ids = local.private_subnet_ids
 
-    # Security Group para o serviço ECS
-    security_group_rules = {
-      ingress_from_alb = {
-        type                     = "ingress"
-        from_port                = service_attrs.container_definitions[keys(service_attrs.container_definitions)[0]].container_port
-        to_port                  = service_attrs.container_definitions[keys(service_attrs.container_definitions)[0]].container_port
-        protocol                 = "tcp"
-        description              = "Allow traffic from ALB"
-        source_security_group_id = module.alb[service_name].security_group_id # Referencia o SG do ALB
+    # Security Group para o serviço ECS (ajustar regra de ingresso para ser condicional)
+    security_group_rules = merge(
+      lookup(service_attrs, "create_alb", false) ? {
+        ingress_from_alb = {
+          type                     = "ingress"
+          from_port                = service_attrs.container_definitions[keys(service_attrs.container_definitions)[0]].container_port
+          to_port                  = service_attrs.container_definitions[keys(service_attrs.container_definitions)[0]].container_port
+          protocol                 = "tcp"
+          description              = "Allow traffic from ALB"
+          source_security_group_id = module.alb[service_name].security_group_id # Referencia o SG do ALB
+        }
+      } : {},
+      {
+        egress_all = {
+          type        = "egress"
+          from_port   = 0
+          to_port     = 0
+          protocol    = "-1"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
       }
-      egress_all = {
-        type        = "egress"
-        from_port   = 0
-        to_port     = 0
-        protocol    = "-1"
-        cidr_blocks = ["0.0.0.0/0"]
-      }
-    }
+    )
 
     # Configurações de deployment (agora dentro da definição de cada serviço)
     deployment_controller = {
@@ -289,16 +302,5 @@ locals {
       Environment = "Development"
       Project     = local.project_name
     }
-  }
-}
-
-
-# outputs.tf
-
-output "debug_service_connect_configurations" {
-  description = "Debug output for service_connect_configuration of each ECS service."
-  value       = {
-    for service_name, service_config in local.ecs_service_configs :
-    service_name => service_config.service_connect_configuration
   }
 }
