@@ -1,3 +1,5 @@
+#main.tf
+
 provider "aws" {
   region = local.aws_region
 }
@@ -20,7 +22,8 @@ module "ecs_main" {
       cpu                        = service_attrs.cpu
       memory                     = service_attrs.memory
       container_definitions      = service_attrs.container_definitions
-      load_balancer              = service_attrs.load_balancer
+      #load_balancer              = service_attrs.load_balancer
+      load_balancer              = service_attrs.load_balancer != null ? [service_attrs.load_balancer.service] : []
       subnet_ids                 = service_attrs.subnet_ids
       security_group_rules       = service_attrs.security_group_rules
 

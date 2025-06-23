@@ -1,8 +1,6 @@
-provider "aws" {
-  assume_role {
-    role_arn = var.AWS_ASSUME_ROLE_ARN
-    external_id = var.AWS_EXTERNAL_ID
-  }  
+#main 
+
+provider "aws" { 
   region = local.aws_region
 }
 

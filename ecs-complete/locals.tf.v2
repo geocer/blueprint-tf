@@ -1,4 +1,5 @@
 #locals.tf
+
 locals {
   # Extrai os dados do tfvars.auto.json
   project_name            = var.project_name
@@ -10,11 +11,7 @@ locals {
   alb_access_logs_bucket  = var.alb_access_logs_bucket
   ecs_cluster_name        = var.ecs_cluster_name
   ecs_log_group_name      = var.ecs_log_group_name
-  service_discovery_namespace_arn = aws_service_discovery_http_namespace.this.arn
-  tags = {
-    Environment = "sit"
-    Project     = local.project_name
-  }  
+  service_discovery_namespace_arn = aws_service_discovery_http_namespace.this.arn 
 
   ecs_services_input = {
     for k, v in var.ecs_services : k => v
@@ -58,7 +55,7 @@ locals {
     # Logs de acesso do ALB
     access_logs = {
       bucket = local.alb_access_logs_bucket
-      enabled = false # Alterado para true para habilitar logs
+      enabled = true # Alterado para true para habilitar logs
     }
 
     tags = {
@@ -188,32 +185,17 @@ locals {
           {
             containerPort = container_def.container_port
             protocol      = "tcp"
-            name          = tostring(container_def.container_port)
           }
         ] : []
 
-        repository_credentials = (
-          lookup(container_def, "repositoryCredentials", null) != null &&
-          lookup(container_def.repositoryCredentials, "credentialsParameter", null) != null
-          ) ? {
-          credentialsParameter = container_def.repositoryCredentials.credentialsParameter
-        } : null
-
-        secrets = [
-          for secret_name, secret_attrs in lookup(container_def, "secrets", {}) : {
-            name      = secret_name
-            value_from = secret_attrs.value_from
-          }
-        ]
-        
-        mount_points = lookup(container_def, "mount_points", null) != null ? [
+        repository_credentials = try(
           {
-            sourceVolume  = container_def.mount_points.source_volume_name # Nome do volume que será montado
-            containerPath = container_def.mount_points.container_path    # Caminho dentro do container
-            readOnly      = lookup(container_def.mount_points, "read_only", false)
-          }
-        ] : []
+            credentials_parameter = container_def.repository_credentials.credentials_parameter
+          },
+          {} 
+        )
 
+        # Removed 'service_connect_client_alias' from here, it's now part of service_connect_configuration.service.client_alias
       }
     }
 
@@ -225,7 +207,7 @@ locals {
         container_name   = keys(service_attrs.container_definitions)[0] # Pega o nome do primeiro container
         container_port   = service_attrs.container_definitions[keys(service_attrs.container_definitions)[0]].container_port
       }
-    } : {}
+    } : null
 
     # Subnets privadas para o serviço ECS
     subnet_ids = local.private_subnet_ids
@@ -323,5 +305,3 @@ locals {
     }
   }
 }
-
-
